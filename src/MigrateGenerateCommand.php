@@ -11,12 +11,14 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use KitLoong\MigrationsGenerator\Enum\Driver;
 use KitLoong\MigrationsGenerator\Migration\ForeignKeyMigration;
+use KitLoong\MigrationsGenerator\Migration\TriggerMigration;
 use KitLoong\MigrationsGenerator\Migration\Migrator\Migrator;
 use KitLoong\MigrationsGenerator\Migration\ProcedureMigration;
 use KitLoong\MigrationsGenerator\Migration\Squash;
 use KitLoong\MigrationsGenerator\Migration\TableMigration;
 use KitLoong\MigrationsGenerator\Migration\ViewMigration;
 use KitLoong\MigrationsGenerator\Schema\Models\Procedure;
+use KitLoong\MigrationsGenerator\Schema\Models\Trigger;
 use KitLoong\MigrationsGenerator\Schema\Models\View;
 use KitLoong\MigrationsGenerator\Schema\MySQLSchema;
 use KitLoong\MigrationsGenerator\Schema\PgSQLSchema;
@@ -41,6 +43,7 @@ class MigrateGenerateCommand extends Command
                             {--table-filename= : Define table migration filename, default pattern: [datetime]_create_[name]_table.php}
                             {--view-filename= : Define view migration filename, default pattern: [datetime]_create_[name]_view.php}
                             {--proc-filename= : Define stored procedure migration filename, default pattern: [datetime]_create_[name]_proc.php}
+                            {--trigger-filename= : Define trigger migration filename, default pattern: [datetime]_add_trigger_[name].php}
                             {--fk-filename= : Define foreign key migration filename, default pattern: [datetime]_add_foreign_keys_to_[name]_table.php}
                             {--log-with-batch= : Log migrations with given batch number. We recommend using batch number 0 so that it becomes the first migration}
                             {--default-index-names : Don\'t use DB index names for migrations}
@@ -50,6 +53,7 @@ class MigrateGenerateCommand extends Command
                             {--skip-vendor : Don\'t generate vendor migrations}
                             {--skip-views : Don\'t generate views}
                             {--skip-proc : Don\'t generate stored procedures}
+                            {--skip-triggers : Don\'t generate triggers}
                             {--squash : Generate all migrations into a single file}
                             {--with-has-table : Check for the existence of a table using `hasTable`}';
 
@@ -70,6 +74,7 @@ class MigrateGenerateCommand extends Command
     protected ProcedureMigration $procedureMigration;
     protected ViewMigration $viewMigration;
     protected TableMigration $tableMigration;
+    protected $triggerMigration;
 
     /**
      * Execute the console command.
@@ -80,6 +85,7 @@ class MigrateGenerateCommand extends Command
         MigrationRepositoryInterface $repository,
         Squash $squash,
         ForeignKeyMigration $foreignKeyMigration,
+        TriggerMigration $triggerMigration,
         ProcedureMigration $procedureMigration,
         TableMigration $tableMigration,
         ViewMigration $viewMigration,
@@ -90,7 +96,7 @@ class MigrateGenerateCommand extends Command
         $this->foreignKeyMigration = $foreignKeyMigration;
         $this->squash              = $squash;
         $this->repository          = $repository;
-
+		$this->triggerMigration    = $triggerMigration;
         $previousConnection = DB::getDefaultConnection();
 
         try {
@@ -167,6 +173,10 @@ class MigrateGenerateCommand extends Command
 
         $setting->setFkFilename(
             $this->option('fk-filename') ?? Config::get('migrations-generator.filename_pattern.foreign_key'),
+        );
+        
+        $setting->setTriggerFilename(
+            $this->option('trigger-filename') ?? Config::get('migrations-generator.filename_pattern.trigger')
         );
     }
 
@@ -403,6 +413,12 @@ class MigrateGenerateCommand extends Command
             $this->generateProcedures();
         }
 
+        if (!$this->option('skip-triggers')) {
+            $setting->getDate()->addSecond();
+            $this->info("\nSetting up Triggers migrations.");
+            $this->generateTriggers($tables);
+        }
+
         $setting->getDate()->addSecond();
         $this->info("\nSetting up Foreign Key migrations.");
         $this->generateForeignKeys($tables);
@@ -430,6 +446,11 @@ class MigrateGenerateCommand extends Command
         if (!$this->option('skip-proc')) {
             $this->info("\nSetting up Stored Procedure migrations.");
             $this->generateProceduresToTemp();
+        }
+
+        if (!$this->option('skip-triggers')) {
+            $this->info("\nSetting up Triggers migrations.");
+            $this->generateTriggersToTemp($tables);
         }
 
         $this->info("\nSetting up Foreign Key migrations.");
@@ -609,6 +630,62 @@ class MigrateGenerateCommand extends Command
             );
 
             $this->info('Prepared: ' . $table);
+        });
+    }
+
+    /**
+     * Generate triggers migrations.
+     * 
+     * @param  \Illuminate\Support\Collection<int, string>  $tables  Table names.
+     */
+    protected function generateTriggers(Collection $tables): void
+    {
+        $tables->each(function (string $table): void {
+            $triggers = $this->schema->getTableTriggers($table);
+
+            if (!$triggers->isNotEmpty()) {
+                return;
+            }
+            $triggers->each(function (Trigger $trigger) use ($table): void {
+                $path = $this->triggerMigration->write(
+                    $table,
+                    $trigger
+                );
+
+                $this->info("Created: $path");
+
+                if (!$this->shouldLog) {
+                    return;
+                }
+
+                $this->logMigration($path);
+            });
+        });
+    }
+
+    /**
+     * Generates foreign key migrations.
+     *
+     * @param  \Illuminate\Support\Collection<int, string>  $tables  Table names.
+     */
+    protected function generateTriggersToTemp(Collection $tables): void
+    {
+        $tables->each(function (string $table): void {
+            $triggers = $this->schema->getTableTriggers($table);
+
+            if (!$triggers->isNotEmpty()) {
+                return;
+            }
+
+            $triggers->each(function (Trigger $trigger) use ($table): void {
+                $this->triggerMigration->writeToTemp(
+                    $trigger
+                );
+    
+                $this->info('Prepared: ' . $table. '.' . $trigger->getName());
+            });
+
+            
         });
     }
 

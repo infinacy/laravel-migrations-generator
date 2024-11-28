@@ -182,4 +182,47 @@ class MySQLRepository extends Repository
         $definitionArr = array_change_key_case((array) $definition);
         return $definitionArr['generation_expression'] !== '' ? $definitionArr['generation_expression'] : null;
     }
+
+    /**
+     * Get a list of triggers.
+     *
+     * @param  string  $table  table name.
+     * @return \Illuminate\Support\Collection<int, array>
+     */
+    public function getTableTriggers($table): Collection {
+        $list       = new Collection();
+        $triggers = DB::select("SHOW TRIGGERS WHERE `Table`='" . $table . "'");
+
+        foreach ($triggers as $trigger) {
+            // Change all keys to lowercase.
+            $triggerArr = array_change_key_case((array) $trigger);
+            $createTrigger   = $this->getTrigger($triggerArr['trigger']);
+
+            // Change all keys to lowercase.
+            $createTriggerArr = array_change_key_case((array) $createTrigger);
+
+            // Remove DEFINER from trigger definition.
+            $definition = preg_replace("/(?=DEFINER=)(.+?)(?= TRIGGER) /u", '', $createTriggerArr["sql original statement"]);
+
+            // Fix line endings
+            $definition = str_replace("\r\n", "\n", $definition);
+
+            // Remove empty lines
+            $definition = (new Collection(explode("\n", $definition)))->filter(fn($item) => strlen(trim($item)))->join("\n");
+
+            $list->push(['name' => $triggerArr['trigger'], 'definition' => $definition]);
+        }
+
+        return $list;
+    }
+
+    /**
+     * Get single trigger by name.
+     *
+     * @param  string  $trigger  trigger name.
+     * @return mixed
+     */
+    private function getTrigger(string $trigger) {
+        return DB::selectOne("SHOW CREATE TRIGGER $trigger");
+    }
 }
