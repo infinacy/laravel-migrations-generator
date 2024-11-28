@@ -69,27 +69,35 @@ class MySQLRepository extends Repository
     /**
      * Get a list of stored procedures.
      *
+     * @param  string  $type  'PROCEDURE' or 'FUNCTION'.
      * @return \Illuminate\Support\Collection<int, \KitLoong\MigrationsGenerator\Repositories\Entities\ProcedureDefinition>
      */
-    public function getProcedures(): Collection
-    {
+    public function getProcedures(): Collection {
         $list       = new Collection();
-        $procedures = DB::select("SHOW PROCEDURE STATUS WHERE Db = '" . DB::getDatabaseName() . "'");
+        $procedures = DB::select("SHOW PROCEDURE STATUS WHERE Db='" . DB::getDatabaseName() . "'");
+        $functions = DB::select("SHOW FUNCTION STATUS WHERE Db='" . DB::getDatabaseName() . "'");
+
+        $procedures = array_merge($procedures, $functions);
 
         foreach ($procedures as $procedure) {
             // Change all keys to lowercase.
             $procedureArr = array_change_key_case((array) $procedure);
-            $createProc   = $this->getProcedure($procedureArr['name']);
+            $type = strtoupper($procedureArr['type']);
+            $createProc   = $this->getProcedure($procedureArr['name'], $type);
 
             // Change all keys to lowercase.
             $createProcArr = array_change_key_case((array) $createProc);
 
-            // https://mariadb.com/kb/en/show-create-procedure/
-            if ($createProcArr['create procedure'] === null || $createProcArr['create procedure'] === '') {
+            $definitionKey = $type === 'PROCEDURE' ? 'create procedure' : 'create function';
+
+            if ($createProcArr[$definitionKey] === null || $createProcArr[$definitionKey] === '') {
                 continue;
             }
 
-            $list->push(new ProcedureDefinition($procedureArr['name'], $createProcArr['create procedure']));
+            // Remove DEFINER from procedure definition.
+            $definition = preg_replace("/(?=DEFINER=)(.+?)(?= $type) /u", '', $createProcArr[$definitionKey]);
+
+            $list->push(new ProcedureDefinition($procedureArr['name'], $definition));
         }
 
         return $list;
@@ -136,10 +144,12 @@ class MySQLRepository extends Repository
      * Get single stored procedure by name.
      *
      * @param  string  $procedure  Procedure name.
+     * @return mixed
      */
-    private function getProcedure(string $procedure): mixed
-    {
-        return DB::selectOne("SHOW CREATE PROCEDURE $procedure");
+    private function getProcedure(string $procedure, $type = 'PROCEDURE') {
+        $type = strtoupper($type);
+        $type = in_array($type, ['PROCEDURE', 'FUNCTION']) ? $type : 'PROCEDURE';
+        return DB::selectOne("SHOW CREATE $type $procedure");
     }
 
     /**
