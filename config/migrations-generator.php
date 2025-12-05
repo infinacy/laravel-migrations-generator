@@ -13,5 +13,6 @@ return [
         'view'        => '[datetime]_create_[name]_view.php',
         'procedure'   => '[datetime]_create_[name]_proc.php',
         'foreign_key' => '[datetime]_add_foreign_keys_to_[name]_table.php',
+        'trigger'     => '[datetime]_add_trigger_[name].php',
     ],
 ];

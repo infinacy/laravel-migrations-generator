@@ -127,4 +127,88 @@ class MySQLRepository extends Repository
         $type = in_array($type, ['PROCEDURE', 'FUNCTION']) ? $type : 'PROCEDURE';
         return DB::selectOne("SHOW CREATE $type $procedure");
     }
+
+    /**
+     * Get the column GENERATION_EXPRESSION when EXTRA is 'VIRTUAL GENERATED' or 'STORED GENERATED'.
+     *
+     * @param  'VIRTUAL GENERATED'|'STORED GENERATED'  $extra
+     */
+    private function getGenerationExpression(string $table, string $column, string $extra): ?string
+    {
+        try {
+            $definition = DB::selectOne(
+                "SELECT GENERATION_EXPRESSION
+                FROM information_schema.COLUMNS
+                WHERE TABLE_NAME = '$table'
+                    AND COLUMN_NAME = '$column'
+                    AND EXTRA = '$extra'",
+            );
+        } catch (QueryException $exception) {
+            // Check if error caused by missing column 'GENERATION_EXPRESSION'.
+            // The column is introduced since MySQL 5.7 and MariaDB 10.2.5.
+            // @see https://mariadb.com/kb/en/information-schema-columns-table/
+            // @see https://dev.mysql.com/doc/refman/5.7/en/information-schema-columns-table.html
+            if (
+                Str::contains(
+                    $exception->getMessage(),
+                    "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'GENERATION_EXPRESSION'",
+                    true,
+                )
+            ) {
+                return null;
+            }
+
+            throw $exception;
+        }
+
+        if ($definition === null) {
+            return null;
+        }
+
+        $definitionArr = array_change_key_case((array) $definition);
+        return $definitionArr['generation_expression'] !== '' ? $definitionArr['generation_expression'] : null;
+    }
+
+    /**
+     * Get a list of triggers.
+     *
+     * @param  string  $table  table name.
+     * @return \Illuminate\Support\Collection<int, array>
+     */
+    public function getTableTriggers($table): Collection {
+        $list       = new Collection();
+        $triggers = DB::select("SHOW TRIGGERS WHERE `Table`='" . $table . "'");
+
+        foreach ($triggers as $trigger) {
+            // Change all keys to lowercase.
+            $triggerArr = array_change_key_case((array) $trigger);
+            $createTrigger   = $this->getTrigger($triggerArr['trigger']);
+
+            // Change all keys to lowercase.
+            $createTriggerArr = array_change_key_case((array) $createTrigger);
+
+            // Remove DEFINER from trigger definition.
+            $definition = preg_replace("/(?=DEFINER=)(.+?)(?= TRIGGER) /u", '', $createTriggerArr["sql original statement"]);
+
+            // Fix line endings
+            $definition = str_replace("\r\n", "\n", $definition);
+
+            // Remove empty lines
+            $definition = (new Collection(explode("\n", $definition)))->filter(fn($item) => strlen(trim($item)))->join("\n");
+
+            $list->push(['name' => $triggerArr['trigger'], 'definition' => $definition]);
+        }
+
+        return $list;
+    }
+
+    /**
+     * Get single trigger by name.
+     *
+     * @param  string  $trigger  trigger name.
+     * @return mixed
+     */
+    private function getTrigger(string $trigger) {
+        return DB::selectOne("SHOW CREATE TRIGGER $trigger");
+    }
 }
