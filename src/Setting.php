@@ -34,6 +34,8 @@ class Setting
 
     private string $fkFilename;
 
+    private string $triggerFilename;
+
     private bool $withHasTable;
 
     public function getDefaultConnection(): string
@@ -169,5 +171,15 @@ class Setting
     public function setWithHasTable(bool $withHasTable): void
     {
         $this->withHasTable = $withHasTable;
+    }
+
+    public function getTriggerFilename(): string
+    {
+        return $this->triggerFilename;
+    }
+
+    public function setTriggerFilename(string $triggerFilename): void
+    {
+        $this->triggerFilename = $triggerFilename;
     }
 }

@@ -7,10 +7,12 @@ use KitLoong\MigrationsGenerator\Database\Models\MySQL\MySQLForeignKey;
 use KitLoong\MigrationsGenerator\Database\Models\MySQL\MySQLProcedure;
 use KitLoong\MigrationsGenerator\Database\Models\MySQL\MySQLTable;
 use KitLoong\MigrationsGenerator\Database\Models\MySQL\MySQLView;
+use KitLoong\MigrationsGenerator\Schema\Models\MySQL\MySQLTrigger;
 use KitLoong\MigrationsGenerator\Repositories\Entities\ProcedureDefinition;
 use KitLoong\MigrationsGenerator\Repositories\MySQLRepository;
 use KitLoong\MigrationsGenerator\Schema\Models\Table;
 use KitLoong\MigrationsGenerator\Schema\Models\View;
+use KitLoong\MigrationsGenerator\Schema\Models\Trigger;
 use KitLoong\MigrationsGenerator\Schema\MySQLSchema as MySQLSchemaInterface;
 
 class MySQLSchema extends DatabaseSchema implements MySQLSchemaInterface
@@ -65,5 +67,14 @@ class MySQLSchema extends DatabaseSchema implements MySQLSchemaInterface
     {
         return $this->getSchemaForeignKeys($table)
             ->map(static fn (array $foreignKey) => new MySQLForeignKey($table, $foreignKey));
+    }
+
+      /**
+     * @inheritDoc
+     */
+    public function getTableTriggers(string $table): Collection
+    {
+        return $this->mySQLRepository->getTableTriggers($table)
+            ->map(static fn (array $trigger) => new MySQLTrigger($table, $trigger['name'], $trigger['definition']));
     }
 }
