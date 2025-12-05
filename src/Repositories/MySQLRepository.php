@@ -43,30 +43,6 @@ class MySQLRepository extends Repository
     }
 
     /**
-     * Get the virtual column definition by table and column name.
-     *
-     * @param  string  $table  Table name.
-     * @param  string  $column  Column name.
-     * @return string|null  The virtual column definition. NULL if not found.
-     */
-    public function getVirtualDefinition(string $table, string $column): ?string
-    {
-        return $this->getGenerationExpression($table, $column, 'VIRTUAL GENERATED');
-    }
-
-    /**
-     * Get the stored column definition by table and column name.
-     *
-     * @param  string  $table  Table name.
-     * @param  string  $column  Column name.
-     * @return string|null  The stored column definition. NULL if not found.
-     */
-    public function getStoredDefinition(string $table, string $column): ?string
-    {
-        return $this->getGenerationExpression($table, $column, 'STORED GENERATED');
-    }
-
-    /**
      * Get a list of stored procedures.
      *
      * @return \Illuminate\Support\Collection<int, \KitLoong\MigrationsGenerator\Repositories\Entities\ProcedureDefinition>
